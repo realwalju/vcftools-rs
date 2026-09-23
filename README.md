@@ -77,10 +77,33 @@ windowed output, and C `printf` number formatting (`-nan` included).
 ## Benchmark
 
 1000 Genomes Phase 3 chr22 (1,103,547 variants × 2,504 samples), Intel
-i7-14700K, WSL2 Ubuntu 24.04. See `results/baseline.tsv` (VCFtools, median
-of 3 runs) and `results/summary_1thread.txt`, `results/summary_28threads.txt`.
+i7-14700K (20 cores / 28 threads), WSL2 Ubuntu 24.04. Wall-clock seconds,
+median of 3 runs (monotonic clock). Every output is byte-identical to
+VCFtools 0.1.17.
 
-Reproduce: `scripts/fetch_data.sh`, `scripts/baseline.sh`, `scripts/final.sh`.
+| Command | VCFtools | vcftools-rs, 1 thread | vcftools-rs, 28 threads |
+|---|---:|---:|---:|
+| `--freq` | 85.8 | 10.7 (8.0×) | 1.87 (45.9×) |
+| `--counts` | 85.4 | 10.6 (8.1×) | 1.80 (47.4×) |
+| `--het` | 96.1 | 14.2 (6.8×) | 2.11 (45.5×) |
+| `--hardy` | 93.5 | 15.2 (6.2×) | 2.13 (43.9×) |
+| `--missing-site` | 80.7 | 8.5 (9.5×) | 1.77 (45.6×) |
+| `--missing-indv` | 78.5 | 7.7 (10.1×) | 1.86 (42.2×) |
+| `--site-pi` | 89.3 | 11.9 (7.5×) | 1.90 (47.0×) |
+| `--window-pi 10000` | 86.5 | 11.6 (7.4×) | 1.93 (44.8×) |
+| `--TajimaD 10000` | 85.9 | 11.7 (7.4×) | 1.89 (45.5×) |
+| `--weir-fst-pop` (CEU vs YRI) | 83.1 | 9.3 (9.0×) | 1.77 (46.9×) |
+| `--weir-fst-pop` windowed | 83.1 | 9.2 (9.1×) | 1.78 (46.7×) |
+
+For context, plink2 2.0.0a6.9 computing the overlapping statistics
+(`--freq`, `--hardy`, `--het`, `--missing`) from the same VCF takes about
+10.5 s on 1 thread and 5.7 s on 28 threads (dominated by VCF import); its
+output format and numerics differ from VCFtools. See
+`results/plink2_context.tsv`.
+
+Raw tables: `results/baseline.tsv`, `results/summary_1thread.txt`,
+`results/summary_28threads.txt`. Reproduce: `scripts/fetch_data.sh`,
+`scripts/baseline.sh`, `scripts/final.sh`, `scripts/plink2_context.sh`.
 
 ## Credit
 

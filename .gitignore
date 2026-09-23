@@ -8,3 +8,4 @@
 /results/vcftools/
 /results/ours/
 /results/fuzz_failures/
+*.tmp

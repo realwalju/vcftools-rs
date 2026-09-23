@@ -71,12 +71,16 @@ pub struct Acc {
     obs_hom: Vec<u32>,
     n_sites: Vec<u32>,
     expected: Vec<f64>,
+    /// Terms not yet applied, in file order. Applying in large batches
+    /// keeps the parallel step coarse-grained.
+    pending: Vec<Term>,
 }
 
 const BLOCK: usize = 64;
+const BATCH: usize = 1 << 16;
 
 impl Acc {
-    pub fn add(&mut self, c: Chunk) {
+    pub fn add(&mut self, mut c: Chunk) {
         if c.obs_hom.is_empty() {
             return;
         }
@@ -91,7 +95,17 @@ impl Acc {
         for (a, b) in self.n_sites.iter_mut().zip(&c.n_sites) {
             *a += b;
         }
-        let terms = &c.terms;
+        self.pending.append(&mut c.terms);
+        if self.pending.len() >= BATCH {
+            self.apply();
+        }
+    }
+
+    /// Adds pending terms to each individual's E(HOM) in file order,
+    /// parallelised across individuals.
+    fn apply(&mut self) {
+        let terms = std::mem::take(&mut self.pending);
+        let terms = &terms;
         self.expected.par_chunks_mut(BLOCK).enumerate().for_each(|(blk, e)| {
             let base = (blk * BLOCK) as u32;
             let end = base + e.len() as u32;
@@ -110,7 +124,8 @@ impl Acc {
         });
     }
 
-    pub fn write(&self, ctx: &Ctx, out: &mut Vec<u8>) {
+    pub fn write(&mut self, ctx: &Ctx, out: &mut Vec<u8>) {
+        self.apply();
         for i in 0..ctx.n_indv {
             if !ctx.include[i] || self.n_sites.get(i).copied().unwrap_or(0) == 0 {
                 continue;

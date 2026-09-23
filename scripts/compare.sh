@@ -31,16 +31,22 @@ declare -A CMDS=(
 )
 
 printf "%-14s %10s %10s %9s  %s\n" command vcftools_s ours_s speedup output
+RUNS=${RUNS:-1}
 for name in "$@"; do
     ext=${CMDS[${name}_ext]}
-    rm -f "$OUT/$name.$ext"   # never compare against a stale file
-    python3 "$ROOT/scripts/mtime.py" "$OUT/$name.time" \
-        "$BIN" --gzvcf "$VCF" ${CMDS[$name]} "${THREADS[@]}" --out "$OUT/$name" 2> "$OUT/$name.log"
-    rc=$?
-    ours=$(cat "$OUT/$name.time")
+    times=()
+    verdict="IDENTICAL"
+    for r in $(seq "$RUNS"); do
+        rm -f "$OUT/$name.$ext"   # never compare against a stale file
+        python3 "$ROOT/scripts/mtime.py" "$OUT/$name.time" \
+            "$BIN" --gzvcf "$VCF" ${CMDS[$name]} "${THREADS[@]}" --out "$OUT/$name" 2> "$OUT/$name.log"
+        rc=$?
+        times+=("$(cat "$OUT/$name.time")")
+        if [ $rc -ne 0 ]; then verdict="FAILED (exit $rc)";
+        elif ! cmp -s "$REF/$name.$ext" "$OUT/$name.$ext"; then
+            verdict="DIFFERS: $(cmp "$REF/$name.$ext" "$OUT/$name.$ext" 2>&1 | head -1)"; fi
+    done
+    ours=$(printf "%s\n" "${times[@]}" | sort -n | awk '{a[NR]=$1} END {print a[int((NR+1)/2)]}')
     base=$(awk -v n="$name" '$1==n {print $2}' "$ROOT/results/baseline.tsv")
-    if [ $rc -ne 0 ]; then verdict="FAILED (exit $rc)";
-    elif cmp -s "$REF/$name.$ext" "$OUT/$name.$ext"; then verdict="IDENTICAL"; else
-        verdict="DIFFERS: $(cmp "$REF/$name.$ext" "$OUT/$name.$ext" 2>&1 | head -1)"; fi
     printf "%-14s %10s %10s %8.1fx  %s\n" "$name" "$base" "$ours" "$(echo "$base / $ours" | bc -l)" "$verdict"
 done
