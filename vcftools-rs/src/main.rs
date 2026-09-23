@@ -70,8 +70,42 @@ struct Params {
     filters: filters::FilterArgs,
 }
 
+const USAGE: &str = "\
+vcftools-rs VERSION: byte-identical, parallel reimplementation of VCFtools statistics
+
+Usage: vcftools-rs (--vcf FILE | --gzvcf FILE) [--out PREFIX] [--threads N]
+                   STATISTIC [FILTERS...]
+
+Statistics (exactly one):
+  --freq  --counts  --het  --hardy  --missing-site  --missing-indv
+  --site-pi  --window-pi SIZE [--window-pi-step STEP]  --TajimaD SIZE
+  --weir-fst-pop FILE --weir-fst-pop FILE [--fst-window-size SIZE --fst-window-step STEP]
+
+Sample filters:
+  --keep FILE  --remove FILE  --indv ID  --remove-indv ID
+
+Site filters:
+  --chr C  --not-chr C  --from-bp N  --to-bp N  --positions FILE  --exclude-positions FILE
+  --snp ID  --snps FILE  --exclude FILE  --remove-indels  --keep-only-indels
+  --min-alleles N  --max-alleles N  --minQ X  --min-meanDP X  --max-meanDP X
+  --remove-filtered-all  --remove-filtered FLAG  --keep-filtered FLAG  --phased
+  --maf X  --max-maf X  --non-ref-af[-any] X  --max-non-ref-af[-any] X  --max-missing X
+  --mac N  --max-mac N  --non-ref-ac[-any] N  --max-non-ref-ac[-any] N
+  --max-missing-count N  --hwe P
+
+Genotype filters:
+  --minDP N  --maxDP N  --minGQ X
+
+Options and output files match VCFtools 0.1.17. Unlike VCFtools, the run log
+is written to standard error only.
+";
+
 fn parse_args() -> Params {
     let mut args = std::env::args().skip(1);
+    if args.len() == 0 {
+        eprint!("{}", USAGE.replace("VERSION", env!("CARGO_PKG_VERSION")));
+        exit(0);
+    }
     let mut p = Params { out: "out".into(), fst_window: -1, fst_step: -1, ..Default::default() };
     let value = |args: &mut dyn Iterator<Item = String>, flag: &str| {
         args.next().unwrap_or_else(|| fatal(&format!("{flag} requires an argument")))
@@ -80,6 +114,14 @@ fn parse_args() -> Params {
     let int = |s: String| record::atoi(s.as_bytes());
     while let Some(a) = args.next() {
         match a.as_str() {
+            "--help" | "-h" => {
+                print!("{}", USAGE.replace("VERSION", env!("CARGO_PKG_VERSION")));
+                exit(0);
+            }
+            "--version" | "-V" => {
+                println!("vcftools-rs {} (output-compatible with VCFtools 0.1.17)", env!("CARGO_PKG_VERSION"));
+                exit(0);
+            }
             "--vcf" | "--gzvcf" => p.input = value(&mut args, &a),
             "--out" => p.out = value(&mut args, &a),
             "--threads" => p.threads = value(&mut args, &a).parse().unwrap_or_else(|_| fatal("bad --threads")),

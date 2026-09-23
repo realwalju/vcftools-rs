@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  # Local builds keep debug info for profiling; release binaries don't.
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+  CARGO_PROFILE_RELEASE_STRIP: "symbols"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Built on an older Ubuntu so the binary runs on older glibc.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path vcftools-rs/Cargo.toml
+      - name: Package
+        run: |
+          name=vcftools-rs-${GITHUB_REF_NAME}-${{ matrix.target }}
+          mkdir "$name"
+          cp vcftools-rs/target/${{ matrix.target }}/release/vcftools-rs README.md CHANGELOG.md COPYING COPYING.LESSER "$name/"
+          tar czf "$name.tar.gz" "$name"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: vcftools-rs-*.tar.gz
+          draft: true # review the notes, then publish by hand
+          body: |
+            See CHANGELOG.md. Output is validated byte-for-byte against
+            VCFtools 0.1.17 on Linux (glibc). The macOS build uses the macOS
+            C library for number formatting and is not separately validated.

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, so fresh fuzz seeds keep running
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0} # login shell so the micromamba env is active
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vcftools-rs
+
+      - name: Install reference VCFtools from Bioconda
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: ref
+          create-args: >-
+            -c conda-forge -c bioconda
+            vcftools=0.1.17 htslib python=3.12
+
+      - name: Build and unit tests
+        run: |
+          cargo build --release --manifest-path vcftools-rs/Cargo.toml
+          cargo test --release --manifest-path vcftools-rs/Cargo.toml
+
+      - name: Real data (1000 Genomes chr22, first 1,500 variants) vs VCFtools
+        run: |
+          D=tests/data
+          bash scripts/check_real.sh $D/chr22_1500.vcf.gz $D/CEU.txt $D/YRI.txt
+          bash scripts/check_real.sh $D/chr22_1500.vcf.gz $D/CEU.txt $D/YRI.txt --maf 0.05 --max-missing 0.9
+          bash scripts/check_real.sh $D/chr22_1500.vcf.gz $D/CEU.txt $D/YRI.txt --keep $D/CEU.txt --hwe 0.001
+
+      - name: Differential fuzz test vs VCFtools
+        run: python3 scripts/fuzz.py 60 ${{ github.run_number }}
+
+      - name: Keep failing fuzz cases
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures
+          path: results/fuzz_failures/
+          if-no-files-found: ignore

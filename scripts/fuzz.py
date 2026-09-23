@@ -11,6 +11,7 @@ Usage: fuzz.py [N_CASES] [SEED]
 """
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,8 +19,15 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OURS = os.path.join(ROOT, "vcftools-rs/target/release/vcftools-rs")
 ENV_BIN = os.path.expanduser("~/micromamba/envs/vcfbench/bin")
-VCFTOOLS = os.path.join(ENV_BIN, "vcftools")
-BGZIP = os.path.join(ENV_BIN, "bgzip")
+
+
+def find_tool(name):
+    """$NAME (upper-case) env var, else PATH, else the local micromamba env."""
+    return os.environ.get(name.upper()) or shutil.which(name) or os.path.join(ENV_BIN, name)
+
+
+VCFTOOLS = find_tool("vcftools")
+BGZIP = find_tool("bgzip")
 
 BASES = "ACGT"
 

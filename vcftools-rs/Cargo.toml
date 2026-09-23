@@ -2,8 +2,13 @@
 name = "vcftools-rs"
 version = "0.1.0"
 edition = "2021"
-description = "Faster, byte-identical reimplementation of VCFtools population-genetics statistics"
+description = "Unofficial, faster, byte-identical reimplementation of VCFtools population-genetics statistics"
 license = "LGPL-3.0-only"
+repository = "https://github.com/OWNER/vcftools-rs"
+readme = "../README.md"
+keywords = ["bioinformatics", "vcf", "population-genetics", "genomics", "vcftools"]
+categories = ["science", "command-line-utilities"]
+rust-version = "1.80"
 
 [dependencies]
 rayon = "1"

@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: >-
+  If you use vcftools-rs, please cite the original VCFtools paper (all
+  statistical methods and their exact behaviour are VCFtools'), and
+  optionally this software.
+title: "vcftools-rs: an unofficial, byte-identical, parallel reimplementation of VCFtools statistics"
+type: software
+authors:
+  - family-names: Cheung
+    given-names: Walton
+license: LGPL-3.0-only
+repository-code: "https://github.com/OWNER/vcftools-rs"
+version: 0.1.0
+preferred-citation:
+  type: article
+  title: "The variant call format and VCFtools"
+  authors:
+    - family-names: Danecek
+      given-names: Petr
+    - family-names: Auton
+      given-names: Adam
+    - family-names: Abecasis
+      given-names: Goncalo
+    - family-names: Albers
+      given-names: Cornelis A.
+    - family-names: Banks
+      given-names: Eric
+    - family-names: DePristo
+      given-names: Mark A.
+    - family-names: Handsaker
+      given-names: Robert E.
+    - family-names: Lunter
+      given-names: Gerton
+    - family-names: Marth
+      given-names: Gabor T.
+    - family-names: Sherry
+      given-names: Stephen T.
+    - family-names: McVean
+      given-names: Gilean
+    - family-names: Durbin
+      given-names: Richard
+  journal: Bioinformatics
+  volume: 27
+  issue: 15
+  start: 2156
+  end: 2158
+  year: 2011
+  doi: 10.1093/bioinformatics/btr330

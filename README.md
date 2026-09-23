@@ -4,6 +4,26 @@ A faster reimplementation of the population-genetics statistics in
 [VCFtools](https://vcftools.github.io/) (Danecek et al., *Bioinformatics* 2011),
 producing **byte-identical output** to VCFtools 0.1.17.
 
+> **Unofficial.** This project is not affiliated with or endorsed by the
+> VCFtools authors. All statistical methods are theirs; please cite the
+> [VCFtools paper](https://doi.org/10.1093/bioinformatics/btr330) (see
+> `CITATION.cff`). Report problems with this reimplementation here, not to
+> the VCFtools issue tracker.
+
+## Install
+
+Prebuilt Linux binaries are attached to each
+[GitHub release](https://github.com/OWNER/vcftools-rs/releases). To build
+from source (Rust 1.80+ and a C compiler):
+
+```bash
+cargo install --git https://github.com/OWNER/vcftools-rs vcftools-rs
+```
+
+Usage is the same as VCFtools for the supported options, e.g.
+`vcftools-rs --gzvcf in.vcf.gz --weir-fst-pop popA.txt --weir-fst-pop popB.txt --out result`.
+`vcftools-rs --help` lists everything supported.
+
 ## Scope
 
 Statistics (VCFtools option names and output files):
@@ -35,17 +55,15 @@ Genotype filters (calls are marked filtered, not removed): `--minDP`,
 Input: plain VCF, BGZF (`bgzip`) or ordinary gzip. `--threads N` sets the
 number of worker threads (default: all cores).
 
+Differences from VCFtools: the run log goes to standard error only (no
+`.log` file), and only one statistic may be requested per run (as in
+VCFtools). Byte-identity is validated on Linux (glibc); number formatting
+comes from the platform's C library.
+
 Not implemented: BCF input, `--bed`/`--exclude-bed`, `--thin`, `--mask`,
 INFO-flag site filters, genotype FILTER-flag filters
 (`--remove-filtered-geno[-all]`), `--derived`, and VCFtools' other output
 types.
-
-## Build and run
-
-```bash
-cargo build --release --manifest-path vcftools-rs/Cargo.toml
-vcftools-rs/target/release/vcftools-rs --gzvcf in.vcf.gz --freq --out result
-```
 
 ## How it is faster
 
