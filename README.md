@@ -135,6 +135,32 @@ Raw tables: `results/baseline.tsv`, `results/summary_1thread.txt`,
 `results/summary_28threads.txt`. Reproduce: `scripts/fetch_data.sh`,
 `scripts/baseline.sh`, `scripts/final.sh`, `scripts/plink2_context.sh`.
 
+### Second dataset: 1001 Genomes *Arabidopsis thaliana*
+
+First 264,200 variants of Chr1 × 1,135 accessions from the 1001 Genomes
+release v3.1 VCF (every call is `GT:GQ:DP`, with real missing data), Fst
+between the `germany` and `western_europe` ADMIXTURE groups. All outputs
+are byte-identical to VCFtools, with and without `--minDP 3 --minGQ 20
+--max-missing 0.8`. Median of 3 runs, seconds:
+
+| Command | VCFtools | vcftools-rs, 1 thread | vcftools-rs, 28 threads |
+|---|---:|---:|---:|
+| `--freq` | 13.5 | 4.9 (2.7×) | 0.74 (18×) |
+| `--het` | 13.9 | 6.4 (2.2×) | 0.86 (16×) |
+| `--hardy` | 14.1 | 5.8 (2.4×) | 0.81 (17×) |
+| `--missing-site` | 12.8 | 4.4 (2.9×) | 0.70 (18×) |
+| `--site-pi` | 13.4 | 5.0 (2.7×) | 0.72 (19×) |
+| `--TajimaD 10000` | 12.8 | 4.8 (2.7×) | 0.71 (18×) |
+| `--weir-fst-pop` | 13.4 | 5.0 (2.7×) | 0.72 (19×) |
+| `--freq --minDP 3 --minGQ 20 --max-missing 0.8` | 34.5 | 18.3 (1.9×) | 1.69 (20×) |
+
+Single-thread gains are smaller than on 1000 Genomes because these
+genotype columns are not bare `a|b` calls, so the vectorised fast path does
+not apply; the genotype filters also re-scan each sample column for DP and
+GQ separately (a known optimisation target). Reproduce with
+`scripts/fetch_athal.sh` and `scripts/athal_bench.sh`
+(`results/athal_benchmark.tsv`).
+
 ## Credit
 
 All statistical methods and their exact numerical behaviour are those of
