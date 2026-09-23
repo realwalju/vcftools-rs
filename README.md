@@ -13,11 +13,11 @@ producing **byte-identical output** to VCFtools 0.1.17.
 ## Install
 
 Prebuilt Linux binaries are attached to each
-[GitHub release](https://github.com/OWNER/vcftools-rs/releases). To build
+[GitHub release](https://github.com/realwalju/vcftools-rs/releases). To build
 from source (Rust 1.80+ and a C compiler):
 
 ```bash
-cargo install --git https://github.com/OWNER/vcftools-rs vcftools-rs
+cargo install --git https://github.com/realwalju/vcftools-rs vcftools-rs
 ```
 
 Usage is the same as VCFtools for the supported options, e.g.
@@ -86,6 +86,11 @@ quirks: `std::accumulate` with an `int` seed truncating Fst sample sizes,
 unsigned wrap-around in π, `std::min` NaN behaviour in the MAF filter, the
 implicit `--keep` performed by `--weir-fst-pop`, chromosome ordering of
 windowed output, and C `printf` number formatting (`-nan` included).
+
+This includes two confirmed VCFtools issues, reproduced deliberately so
+results stay identical: `--site-pi` overflows above ~23,000 diploid
+samples, and `--non-ref-af-any` has no effect on its own. See
+[docs/upstream-notes.md](docs/upstream-notes.md).
 
 ## Verification
 

@@ -9,4 +9,6 @@
 /results/ours/
 /results/fuzz_failures/
 *.tmp
+# Outreach drafts, reviewed and posted by hand
+/drafts/
 __pycache__/
