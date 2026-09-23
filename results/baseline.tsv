@@ -1,0 +1,12 @@
+command	wall_s	max_rss_mb
+freq	86.04	6
+counts	84.22	6
+het	95.61	6
+hardy	94.20	6
+missing_site	80.47	6
+missing_indv	77.65	6
+site_pi	87.99	6
+window_pi	87.43	6
+tajimad	85.42	6
+fst_site	83.20	6
+fst_window	83.00	7

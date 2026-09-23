@@ -1,0 +1,10 @@
+# Downloaded benchmark data (re-fetch with scripts/fetch_data.sh)
+/data/
+# Upstream VCFtools source (reference only; git clone https://github.com/vcftools/vcftools)
+/upstream-vcftools/
+# Build output
+/vcftools-rs/target/
+# Large per-run outputs; the summary tables in results/ are kept
+/results/vcftools/
+/results/ours/
+/results/fuzz_failures/

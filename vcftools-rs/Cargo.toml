@@ -1,0 +1,20 @@
+[package]
+name = "vcftools-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Faster, byte-identical reimplementation of VCFtools population-genetics statistics"
+license = "LGPL-3.0-only"
+
+[dependencies]
+rayon = "1"
+libdeflater = "1"
+libc = "0.2"
+memchr = "2"
+itoa = "1"
+flate2 = "1"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = 1

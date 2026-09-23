@@ -1,0 +1,12 @@
+command        vcftools_s     ours_s   speedup  output
+freq                86.04      11.30      7.6x  IDENTICAL
+counts              84.22      10.90      7.7x  IDENTICAL
+het                 95.61      14.81      6.5x  IDENTICAL
+hardy               94.20      16.35      5.8x  IDENTICAL
+missing_site        80.47       8.98      9.0x  IDENTICAL
+missing_indv        77.65       8.07      9.6x  IDENTICAL
+site_pi             87.99      12.36      7.1x  IDENTICAL
+window_pi           87.43      12.25      7.1x  IDENTICAL
+tajimad             85.42      12.18      7.0x  IDENTICAL
+fst_site            83.20       9.77      8.5x  IDENTICAL
+fst_window          83.00       9.70      8.6x  IDENTICAL
