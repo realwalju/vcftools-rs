@@ -179,12 +179,12 @@ are byte-identical to VCFtools, with and without `--minDP 3 --minGQ 20
 | `--site-pi` | 13.4 | 5.0 (2.7×) | 0.72 (19×) |
 | `--TajimaD 10000` | 12.8 | 4.8 (2.7×) | 0.71 (18×) |
 | `--weir-fst-pop` | 13.4 | 5.0 (2.7×) | 0.72 (19×) |
-| `--freq --minDP 3 --minGQ 20 --max-missing 0.8` | 34.5 | 18.3 (1.9×) | 1.69 (20×) |
+| `--freq --minDP 3 --minGQ 20 --max-missing 0.8` | 34.5 | 11.4 (3.0×) | 1.17 (30×) |
 
 Single-thread gains are smaller than on 1000 Genomes because these
 genotype columns are not bare `a|b` calls, so the vectorised fast path does
-not apply; the genotype filters also re-scan each sample column for DP and
-GQ separately (a known optimisation target). Reproduce with
+not apply. Genotype filters read DP and GQ in a single pass per sample
+column, with allocation-free, bit-identical float parsing. Reproduce with
 `scripts/fetch_athal.sh` and `scripts/athal_bench.sh`
 (`results/athal_benchmark.tsv`).
 

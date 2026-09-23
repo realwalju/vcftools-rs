@@ -111,10 +111,22 @@ impl<'a> Site<'a> {
     /// `n_indv` samples (None when absent), as parse_genotype_entry would
     /// find it.
     pub fn for_each_subfield(&self, n_indv: usize, idx: i32, mut f: impl FnMut(usize, Option<&[u8]>)) {
+        self.for_each_subfield2(n_indv, idx, -1, |i, a, _| f(i, a));
+    }
+
+    /// Like `for_each_subfield`, but extracts two sub-fields in one pass.
+    pub fn for_each_subfield2(
+        &self,
+        n_indv: usize,
+        idx_a: i32,
+        idx_b: i32,
+        mut f: impl FnMut(usize, Option<&[u8]>, Option<&[u8]>),
+    ) {
         let mut rest = self.samples;
         for i in 0..n_indv {
             let end = memchr(b'\t', rest).unwrap_or(rest.len());
-            f(i, subfield(&rest[..end], idx));
+            let (a, b) = subfields2(&rest[..end], idx_a, idx_b);
+            f(i, a, b);
             rest = if end < rest.len() { &rest[end + 1..] } else { b"" };
         }
     }
@@ -161,6 +173,35 @@ pub fn genotype(field: &[u8], gt_idx: i32) -> Gt {
     match subfield(field, gt_idx) {
         Some(s) => decode_gt(s),
         None => MISSING_DIPLOID,
+    }
+}
+
+/// Sub-fields `a` and `b` (either may be -1) of a sample column, found in
+/// a single scan; each matches what `subfield` would return.
+#[inline]
+fn subfields2(field: &[u8], a: i32, b: i32) -> (Option<&[u8]>, Option<&[u8]>) {
+    let (mut ra, mut rb) = (None, None);
+    let last = a.max(b);
+    if last < 0 {
+        return (ra, rb);
+    }
+    let (mut i, mut start) = (0, 0);
+    loop {
+        let end = memchr(b':', &field[start..]).map(|o| start + o);
+        let sub = &field[start..end.unwrap_or(field.len())];
+        if i == a {
+            ra = Some(sub);
+        }
+        if i == b {
+            rb = Some(sub);
+        }
+        match end {
+            Some(e) if i < last => {
+                i += 1;
+                start = e + 1;
+            }
+            _ => return (ra, rb),
+        }
     }
 }
 
@@ -224,12 +265,42 @@ pub fn str2int(s: &[u8]) -> i32 {
     }
 }
 
-/// C `atof` (via the C library, for identical parsing).
+/// C `atof`. Plain decimals (`12`, `3.5`, `.5`) are parsed in Rust, whose
+/// float parsing is correctly rounded like glibc's strtod, so results are
+/// bit-identical; anything else (sign, exponent, inf/nan, whitespace,
+/// trailing text) goes to the C library.
 pub fn atof(s: &[u8]) -> f64 {
-    let mut buf = Vec::with_capacity(s.len() + 1);
-    buf.extend_from_slice(s);
-    buf.push(0);
+    if is_plain_decimal(s) {
+        // SAFETY: plain decimals are ASCII.
+        if let Ok(v) = unsafe { std::str::from_utf8_unchecked(s) }.parse::<f64>() {
+            return v;
+        }
+    }
+    let mut stack = [0u8; 64];
+    let mut heap;
+    let buf: &mut [u8] = if s.len() < stack.len() {
+        &mut stack[..s.len() + 1]
+    } else {
+        heap = vec![0u8; s.len() + 1];
+        &mut heap
+    };
+    buf[..s.len()].copy_from_slice(s);
+    buf[s.len()] = 0;
     unsafe { libc::atof(buf.as_ptr() as *const libc::c_char) }
+}
+
+/// `[0-9]+` or `[0-9]*\.[0-9]+` or `[0-9]+\.`
+fn is_plain_decimal(s: &[u8]) -> bool {
+    let mut digits = 0;
+    let mut dots = 0;
+    for &c in s {
+        match c {
+            b'0'..=b'9' => digits += 1,
+            b'.' => dots += 1,
+            _ => return false,
+        }
+    }
+    digits > 0 && dots <= 1
 }
 
 /// header::str2double: "" or "." is missing (-1), otherwise C `atof`.
@@ -273,5 +344,56 @@ mod tests {
         assert_eq!(genotype(b"35:0/1", 1), Gt::new(0, 1, 2, b'/'));
         assert_eq!(genotype(b"35", 1), MISSING_DIPLOID);
         assert_eq!(genotype(b"0|1", -1), MISSING_DIPLOID);
+    }
+
+    #[test]
+    fn subfields_match_single_lookup() {
+        let cols: [&[u8]; 6] = [b"0/1:35:12", b"0/1:35", b"0/1", b"", b"::", b"a:b:c:d"];
+        for f in cols {
+            for a in -1..5 {
+                for b in -1..5 {
+                    assert_eq!(subfields2(f, a, b), (subfield(f, a), subfield(f, b)), "{f:?} {a} {b}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn atof_matches_libc() {
+        let cases: [&[u8]; 16] = [
+            b"0", b"12", b"35.5", b".5", b"7.", b"99.99", b"0.1", b"123456789.123456789", b"1e2", b"-3", b"+4",
+            b" 5", b"nan", b"inf", b"12abc", b"",
+        ];
+        for s in cases {
+            let mut buf = s.to_vec();
+            buf.push(0);
+            let want = unsafe { libc::atof(buf.as_ptr() as *const libc::c_char) };
+            let got = atof(s);
+            assert!(got.to_bits() == want.to_bits() || (got.is_nan() && want.is_nan()), "{s:?}: {got} vs {want}");
+        }
+        // Random plain decimals, including long ones that stress rounding.
+        let mut x: u64 = 0x9E3779B97F4A7C15;
+        let mut next = |m: u64| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x % m
+        };
+        for _ in 0..200_000 {
+            let mut s = Vec::new();
+            for _ in 0..next(20) {
+                s.push(b'0' + next(10) as u8);
+            }
+            if next(2) == 0 {
+                s.push(b'.');
+                for _ in 0..next(25) {
+                    s.push(b'0' + next(10) as u8);
+                }
+            }
+            let mut buf = s.clone();
+            buf.push(0);
+            let want = unsafe { libc::atof(buf.as_ptr() as *const libc::c_char) };
+            assert_eq!(atof(&s).to_bits(), want.to_bits(), "{:?}", String::from_utf8_lossy(&s));
+        }
     }
 }

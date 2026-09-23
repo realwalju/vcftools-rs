@@ -363,27 +363,29 @@ impl SiteFilter {
                 return false;
             }
         }
-        if a.min_gq > 0.0 && site.gq_idx != -1 {
+        // Genotype filters (GQ, then DP upstream; both only mark exclusions,
+        // so one pass over the sample columns reads both fields).
+        let gq_idx = if a.min_gq > 0.0 { site.gq_idx } else { -1 };
+        let dp_idx = if a.min_dp > 0 || a.max_dp != i32::MAX { site.dp_idx } else { -1 };
+        if gq_idx != -1 || dp_idx != -1 {
             g.get(site, ctx.n_indv);
             let gts = g.get_mut();
-            site.for_each_subfield(ctx.n_indv, site.gq_idx, |i, gq| {
-                // set_indv_GQUALITY: missing is -1, values above 99 are capped.
-                let mut q = gq.map_or(-1.0, str2double);
-                if q != -1.0 && q > 99.0 {
-                    q = 99.0;
+            site.for_each_subfield2(ctx.n_indv, gq_idx, dp_idx, |i, gq, dp| {
+                if gq_idx != -1 {
+                    // set_indv_GQUALITY: missing is -1, values above 99 are capped.
+                    let mut q = gq.map_or(-1.0, str2double);
+                    if q != -1.0 && q > 99.0 {
+                        q = 99.0;
+                    }
+                    if q < a.min_gq {
+                        gts[i].excluded = true;
+                    }
                 }
-                if q < a.min_gq {
-                    gts[i].excluded = true;
-                }
-            });
-        }
-        if (a.min_dp > 0 || a.max_dp != i32::MAX) && site.dp_idx != -1 {
-            g.get(site, ctx.n_indv);
-            let gts = g.get_mut();
-            site.for_each_subfield(ctx.n_indv, site.dp_idx, |i, dp| {
-                let depth = dp.map_or(-1, str2int);
-                if depth < a.min_dp || depth > a.max_dp {
-                    gts[i].excluded = true;
+                if dp_idx != -1 {
+                    let depth = dp.map_or(-1, str2int);
+                    if depth < a.min_dp || depth > a.max_dp {
+                        gts[i].excluded = true;
+                    }
                 }
             });
         }

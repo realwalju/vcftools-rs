@@ -6,4 +6,4 @@ command	vcftools_s	ours_1t_s	ours_28t_s
 --site-pi	13.42	4.98	0.72
 --TajimaD 10000	12.80	4.75	0.71
 --weir-fst-pop germany.txt --weir-fst-pop western_europe.txt	13.41	5.04	0.72
---freq --minDP 3 --minGQ 20 --max-missing 0.8	34.53	18.32	1.69
+--freq --minDP 3 --minGQ 20 --max-missing 0.8	34.53	11.43	1.17
