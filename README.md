@@ -4,6 +4,15 @@ A faster reimplementation of the population-genetics statistics in
 [VCFtools](https://vcftools.github.io/) (Danecek et al., *Bioinformatics* 2011),
 producing **byte-identical output** to VCFtools 0.1.17.
 
+VCFtools is still the de facto tool for Weir & Cockerham Fst, nucleotide
+diversity (π), Tajima's D and heterozygosity-based inbreeding coefficients
+from VCF files: its paper is cited over 2,000 times a year (2,658 in 2024,
+per OpenAlex), and these statistics are not available in bcftools. But
+VCFtools is single-threaded and slow on large datasets. vcftools-rs gives
+the same results, byte for byte, 6–10× faster on one core and ~45× faster
+on 28 cores (1000 Genomes chr22), so existing pipelines and published
+analyses can be reproduced unchanged, only faster.
+
 > **Unofficial.** This project is not affiliated with or endorsed by the
 > VCFtools authors. All statistical methods are theirs; please cite the
 > [VCFtools paper](https://doi.org/10.1093/bioinformatics/btr330) (see
@@ -64,6 +73,24 @@ Not implemented: BCF input, `--bed`/`--exclude-bed`, `--thin`, `--mask`,
 INFO-flag site filters, genotype FILTER-flag filters
 (`--remove-filtered-geno[-all]`), `--derived`, and VCFtools' other output
 types.
+
+## Relationship to other tools
+
+- **bcftools** is VCFtools' modern successor for VCF manipulation. Its
+  `+fill-tags` plugin computes allele frequencies/counts and Hardy-Weinberg
+  statistics (as INFO fields, in a different format), but it has no Fst,
+  nucleotide diversity, Tajima's D or inbreeding-coefficient calculations.
+  For `--freq`, `--counts`, `--hardy` and missingness, vcftools-rs mainly
+  offers VCFtools-format compatibility; for the population-genetics
+  statistics it is a faster route to the tool people already use.
+- **plink2** computes frequencies, HWE, heterozygosity, missingness and Fst
+  quickly, with its own formats and numerics (see the benchmark note below).
+- **pixy** (Korunes & Samuk 2021) estimates π and dxy correctly in the
+  presence of missing data from all-sites VCFs. VCFtools' windowed π does
+  not distinguish missing from invariant sites and can be biased when data
+  are missing; vcftools-rs reproduces VCFtools' estimate exactly, bias
+  included. For new analyses of π with substantial missing data, consider
+  pixy; use vcftools-rs to reproduce or speed up VCFtools-based work.
 
 ## How it is faster
 
