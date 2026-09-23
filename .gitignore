@@ -9,3 +9,4 @@
 /results/ours/
 /results/fuzz_failures/
 *.tmp
+__pycache__/
