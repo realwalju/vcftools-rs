@@ -53,7 +53,7 @@ pub fn process(ctx: &Ctx, text: &[u8], c: &mut Chunk) {
             if !inc {
                 continue;
             }
-            if g.a > -1 && g.b > -1 {
+            if !g.excluded && g.a > -1 && g.b > -1 {
                 c.n_sites[i] += 1;
                 if g.a == g.b {
                     c.obs_hom[i] += 1;

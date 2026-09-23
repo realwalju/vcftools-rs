@@ -53,7 +53,7 @@ fn site_fst(pops: &Pops, gts: &[Gt], n_alleles: usize) -> (f64, f64, f64) {
         n_hom.iter_mut().for_each(|x| *x = 0);
         n_het.iter_mut().for_each(|x| *x = 0);
         for (g, &member) in gts.iter().zip(&pops.members[i]) {
-            if !member {
+            if !member || g.excluded {
                 continue;
             }
             for uj in 0..n_alleles as i32 {

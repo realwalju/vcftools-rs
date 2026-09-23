@@ -31,6 +31,13 @@ impl Genotypes {
         }
         &self.buf
     }
+
+    /// The decoded genotypes, for genotype filters to mark exclusions.
+    /// `get` must have been called for the current site.
+    pub fn get_mut(&mut self) -> &mut [Gt] {
+        debug_assert!(self.ready);
+        &mut self.buf
+    }
 }
 
 /// Per-chunk reusable buffers.
@@ -68,7 +75,7 @@ impl Ctx {
     pub fn genotype_counts(&self, gts: &[Gt]) -> (u32, u32, u32) {
         let (mut b11, mut b12, mut b22) = (0u32, 0u32, 0u32);
         for (g, &inc) in gts.iter().zip(&self.include) {
-            if inc && g.a > -1 && g.b > -1 {
+            if inc && !g.excluded && g.a > -1 && g.b > -1 {
                 if g.a != g.b {
                     b12 += 1;
                 } else if g.a == 0 {
@@ -83,19 +90,20 @@ impl Ctx {
         (b11, b12, b22)
     }
 
-    /// entry::is_diploid: every kept individual has a diploid call.
+    /// entry::is_diploid: every kept, unfiltered call is diploid.
     pub fn is_diploid(&self, gts: &[Gt]) -> bool {
-        gts.iter().zip(&self.include).all(|(g, &inc)| !inc || g.ploidy == 2)
+        gts.iter().zip(&self.include).all(|(g, &inc)| !inc || g.excluded || g.ploidy == 2)
     }
 
     /// entry::get_allele_counts over kept individuals; returns the number
     /// of non-missing chromosomes. Out-of-range allele indices (undefined
     /// behaviour upstream) are counted as present but not tallied.
     pub fn allele_counts(&self, gts: &[Gt], n_alleles: usize, counts: &mut Vec<i32>) -> u32 {
-        // Branch-free histogram. Slot 0: missing (< 0); slots 1..=n: allele
-        // a-1; slot n+1: out-of-range index (non-missing but not tallied).
-        // Two tallies break the store-to-load dependency between a and b.
-        let slot = |a: i32| ((a + 1).max(0) as usize).min(n_alleles + 1);
+        // Branch-free histogram. Slot 0: missing (< 0) or filtered call;
+        // slots 1..=n: allele a-1; slot n+1: out-of-range index (non-missing
+        // but not tallied). Two tallies break the store-to-load dependency.
+        let slot_of = |a: i32| ((a + 1).max(0) as usize).min(n_alleles + 1);
+        let slot = |g: &Gt, a: i32| slot_of(a) * (!g.excluded as usize);
         let mut ta = [0u32; 8];
         let mut tb = [0u32; 8];
         let (ta, tb): (&mut [u32], &mut [u32]) = if n_alleles + 2 <= 8 {
@@ -107,14 +115,14 @@ impl Ctx {
         };
         if self.n_kept == self.n_indv {
             for g in gts {
-                ta[slot(g.a)] += 1;
-                tb[slot(g.b)] += 1;
+                ta[slot(g, g.a)] += 1;
+                tb[slot(g, g.b)] += 1;
             }
         } else {
             for (g, &inc) in gts.iter().zip(&self.include) {
                 if inc {
-                    ta[slot(g.a)] += 1;
-                    tb[slot(g.b)] += 1;
+                    ta[slot(g, g.a)] += 1;
+                    tb[slot(g, g.b)] += 1;
                 }
             }
         }
@@ -128,7 +136,7 @@ impl Ctx {
         counts.resize(n_alleles, 0);
         let mut n = 0u32;
         for (g, &inc) in gts.iter().zip(&self.include) {
-            if !inc {
+            if !inc || g.excluded {
                 continue;
             }
             for a in [g.a, g.b] {

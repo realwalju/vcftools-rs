@@ -1,12 +1,14 @@
 //! Site filters (entry::apply_filters in VCFtools' entry_filters.cpp),
 //! applied in the same order and with the same comparison semantics.
+//! Genotype filters (--minDP, --maxDP, --minGQ) mark individual calls as
+//! excluded rather than removing the site.
 //! Not supported: --bed/--exclude-bed, --thin, --mask, INFO-flag filters,
-//! mean-depth filters and genotype-level filters (--minDP, --minGQ, ...).
+//! genotype FILTER-flag filters (--remove-filtered-geno*).
 
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 
-use crate::record::{str2double, Alleles, Site};
+use crate::record::{str2double, str2int, Alleles, Site};
 use crate::stats::Genotypes;
 use crate::{fatal, Ctx};
 
@@ -31,7 +33,12 @@ pub struct FilterArgs {
     pub min_alleles: i32,
     pub max_alleles: i32,
     pub min_quality: f64,
+    pub min_mean_depth: f64,
+    pub max_mean_depth: f64,
     pub phased: bool,
+    pub min_gq: f64,
+    pub min_dp: i32,
+    pub max_dp: i32,
     pub min_maf: f64,
     pub max_maf: f64,
     pub min_nraf: f64,
@@ -69,7 +76,12 @@ impl Default for FilterArgs {
             min_alleles: -1,
             max_alleles: i32::MAX,
             min_quality: -1.0,
+            min_mean_depth: -1.0,
+            max_mean_depth: f64::MAX,
             phased: false,
+            min_gq: -1.0,
+            min_dp: -1,
+            max_dp: i32::MAX,
             min_maf: -1.0,
             max_maf: f64::MAX,
             min_nraf: -1.0,
@@ -114,7 +126,12 @@ impl FilterArgs {
             "--min-alleles" => self.min_alleles = i(value()),
             "--max-alleles" => self.max_alleles = i(value()),
             "--minQ" => self.min_quality = f(value()),
+            "--min-meanDP" => self.min_mean_depth = f(value()),
+            "--max-meanDP" => self.max_mean_depth = f(value()),
             "--phased" => self.phased = true,
+            "--minGQ" => self.min_gq = f(value()),
+            "--minDP" => self.min_dp = i(value()),
+            "--maxDP" => self.max_dp = i(value()),
             "--maf" => self.min_maf = f(value()),
             "--max-maf" => self.max_maf = f(value()),
             "--non-ref-af" => self.min_nraf = f(value()),
@@ -184,6 +201,12 @@ impl FilterArgs {
         }
         if self.max_alleles < self.min_alleles {
             err("Max Number of Alleles must be greater than Min Number of Alleles.", 6);
+        }
+        if self.max_mean_depth < self.min_mean_depth {
+            err("Max Mean Depth must be greater the Min Mean Depth.", 7);
+        }
+        if self.max_dp < self.min_dp {
+            err("Max Genotype Depth must be greater than Min Genotype Depth.", 9);
         }
     }
 }
@@ -317,11 +340,52 @@ impl SiteFilter {
         if a.min_quality >= 0.0 && str2double(site.qual) < a.min_quality {
             return false;
         }
+        if a.min_mean_depth > 0.0 || a.max_mean_depth != f64::MAX {
+            // Kept samples without a depth still count in the denominator.
+            let (mut sum, mut n) = (0.0f64, 0u32);
+            site.for_each_subfield(ctx.n_indv, site.dp_idx, |i, dp| {
+                if ctx.include[i] {
+                    let depth = dp.map_or(-1, str2int);
+                    if depth >= 0 {
+                        sum += depth as f64;
+                    }
+                    n += 1;
+                }
+            });
+            let mean = sum / n as f64;
+            if mean < a.min_mean_depth || mean > a.max_mean_depth {
+                return false;
+            }
+        }
         if a.phased {
             let gts = g.get(site, ctx.n_indv);
             if gts.iter().zip(&ctx.include).any(|(g, &inc)| inc && g.phase != b'|') {
                 return false;
             }
+        }
+        if a.min_gq > 0.0 && site.gq_idx != -1 {
+            g.get(site, ctx.n_indv);
+            let gts = g.get_mut();
+            site.for_each_subfield(ctx.n_indv, site.gq_idx, |i, gq| {
+                // set_indv_GQUALITY: missing is -1, values above 99 are capped.
+                let mut q = gq.map_or(-1.0, str2double);
+                if q != -1.0 && q > 99.0 {
+                    q = 99.0;
+                }
+                if q < a.min_gq {
+                    gts[i].excluded = true;
+                }
+            });
+        }
+        if (a.min_dp > 0 || a.max_dp != i32::MAX) && site.dp_idx != -1 {
+            g.get(site, ctx.n_indv);
+            let gts = g.get_mut();
+            site.for_each_subfield(ctx.n_indv, site.dp_idx, |i, dp| {
+                let depth = dp.map_or(-1, str2int);
+                if depth < a.min_dp || depth > a.max_dp {
+                    gts[i].excluded = true;
+                }
+            });
         }
         if self.freq_active {
             if site.gt_idx == -1 {

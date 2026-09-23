@@ -26,14 +26,19 @@ Site filters: `--chr`, `--not-chr`, `--from-bp`, `--to-bp`, `--positions`,
 `--remove-filtered-all`, `--remove-filtered`, `--keep-filtered`, `--phased`,
 `--maf`, `--max-maf`, `--non-ref-af[-any]`, `--max-non-ref-af[-any]`,
 `--max-missing`, `--mac`, `--max-mac`, `--non-ref-ac[-any]`,
-`--max-non-ref-ac[-any]`, `--max-missing-count`, `--hwe`.
+`--max-non-ref-ac[-any]`, `--max-missing-count`, `--hwe`, `--min-meanDP`,
+`--max-meanDP`.
+
+Genotype filters (calls are marked filtered, not removed): `--minDP`,
+`--maxDP`, `--minGQ`.
 
 Input: plain VCF, BGZF (`bgzip`) or ordinary gzip. `--threads N` sets the
 number of worker threads (default: all cores).
 
 Not implemented: BCF input, `--bed`/`--exclude-bed`, `--thin`, `--mask`,
-INFO-flag and mean-depth site filters, genotype-level filters (`--minDP`,
-`--minGQ`, ...), `--derived`, and VCFtools' other output types.
+INFO-flag site filters, genotype FILTER-flag filters
+(`--remove-filtered-geno[-all]`), `--derived`, and VCFtools' other output
+types.
 
 ## Build and run
 
@@ -70,9 +75,11 @@ windowed output, and C `printf` number formatting (`-nan` included).
   1000 Genomes chr22 and checks each output with `cmp` against VCFtools'.
 - `scripts/fuzz.py CASES SEED` is a differential fuzz test: it generates
   random messy VCFs (missing/half-missing/haploid genotypes, phased/unphased
-  mixes, multi-allelic sites, indels, GT not first in FORMAT, FILTER/QUAL/ID
-  variety, repeated chromosomes; plain, BGZF and gzip) with random sample
-  and site filters, and requires identical output (or both tools failing).
+  mixes, multi-allelic sites, indels, GT not first in FORMAT, DP/GQ values
+  including missing and GQ > 99, FILTER/QUAL/ID variety, repeated
+  chromosomes; plain, BGZF and gzip) with random sample, site and genotype
+  filters, and requires identical output (or both tools failing).
+  `scripts/fuzz_many.sh CASES SEED...` runs several seeds.
 
 ## Benchmark
 

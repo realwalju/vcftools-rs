@@ -51,7 +51,7 @@ def make_vcf(rng, path, n_samples, n_sites):
     chroms = rng.choice([["1"], ["1", "2"], ["chrA", "chrB", "chrA"]])
     # Rows without GT make VCFtools reject genotype-based filters, so only
     # some files contain them.
-    fmt_weights = [60, 20, 15, 5] if rng.random() < 0.2 else [60, 20, 15, 0]
+    fmt_weights = [45, 15, 10, 15, 10, 5] if rng.random() < 0.2 else [45, 15, 10, 15, 10, 0]
     sites = []  # (chrom, pos, id) for building filter lists
     for chrom in chroms:
         pos = rng.randrange(1, 500)
@@ -74,19 +74,18 @@ def make_vcf(rng, path, n_samples, n_sites):
                 ref, alt = ref.lower(), alt.lower()
             n_alleles = 1 + len(alts)
             style = rng.choices(["mixed", "phased", "clean", "haploid_site"], weights=[50, 25, 15, 10])[0]
-            fmt = rng.choices(["GT", "GT:DP", "DP:GT", "DP"], weights=fmt_weights)[0]
+            fmt = rng.choices(["GT", "GT:DP", "DP:GT", "GT:DP:GQ", "GQ:GT:DP", "DP"], weights=fmt_weights)[0]
             cols = []
             for _ in samples:
-                gt = genotype(rng, n_alleles, style)
-                dp = str(rng.randrange(0, 60))
-                if fmt == "GT":
-                    cols.append(gt)
-                elif fmt == "GT:DP":
-                    cols.append(gt if rng.random() < 0.05 else f"{gt}:{dp}")
-                elif fmt == "DP:GT":
-                    cols.append(dp if rng.random() < 0.05 else f"{dp}:{gt}")
-                else:
-                    cols.append(dp)
+                vals = {
+                    "GT": genotype(rng, n_alleles, style),
+                    "DP": rng.choice([".", str(rng.randrange(0, 60)), str(rng.randrange(0, 12))]),
+                    "GQ": rng.choice([".", str(rng.randrange(0, 130)), f"{rng.uniform(0, 40):.1f}"]),
+                }
+                keys = fmt.split(":")
+                if rng.random() < 0.05:  # trailing fields dropped
+                    keys = keys[: rng.randrange(1, len(keys) + 1)]
+                cols.append(":".join(vals[k] for k in keys))
             lines.append(f"{chrom}\t{pos}\t{vid}\t{ref}\t{alt}\t{qual}\t{flt}\t.\t{fmt}\t" + "\t".join(cols))
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -123,6 +122,12 @@ def site_filters(rng, d, sites):
         lambda: ["--keep-filtered", rng.choice(["q10", "PASS"])],
         lambda: ["--hwe", rng.choice(["0.001", "0.05"])],
         lambda: ["--phased"],
+        lambda: ["--minDP", rng.choice(["1", "5", "10"])],
+        lambda: ["--maxDP", rng.choice(["8", "30"])],
+        lambda: ["--minDP", "3", "--maxDP", "40"],
+        lambda: ["--minGQ", rng.choice(["10", "20", "99", "100"])],
+        lambda: ["--min-meanDP", rng.choice(["5", "20"])],
+        lambda: ["--max-meanDP", rng.choice(["10", "30"])],
         lambda: ["--non-ref-af", "0.1"],
         lambda: ["--max-non-ref-af", "0.5"],
         lambda: ["--non-ref-af-any", "0.1"],

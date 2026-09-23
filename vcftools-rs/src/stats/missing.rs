@@ -1,6 +1,6 @@
 //! --missing-site (output_site_missingness) and --missing-indv
-//! (output_indv_missingness). Genotype filters are not supported, so
-//! N_GENOTYPE_FILTERED is always 0.
+//! (output_indv_missingness). Calls removed by genotype filters are
+//! reported as N_GENOTYPE(S)_FILTERED and excluded from N_DATA.
 
 use super::{for_each_site, Scratch};
 use crate::fmt;
@@ -13,9 +13,13 @@ pub fn site(ctx: &Ctx, text: &[u8], out: &mut Vec<u8>) {
     let mut s = Scratch::default();
     for_each_site(ctx, text, &mut s, |site, _, gts, _| {
         let gts = gts.get(site, ctx.n_indv);
-        let (mut miss, mut tot) = (0u32, 0u32);
+        let (mut miss, mut tot, mut filtered) = (0u32, 0u32, 0u32);
         for (g, &inc) in gts.iter().zip(&ctx.include) {
             if !inc {
+                continue;
+            }
+            if g.excluded {
+                filtered += 1;
                 continue;
             }
             if g.a == -1 {
@@ -36,7 +40,9 @@ pub fn site(ctx: &Ctx, text: &[u8], out: &mut Vec<u8>) {
         fmt::int(out, site.pos);
         out.push(b'\t');
         fmt::int(out, tot);
-        out.extend_from_slice(b"\t0\t");
+        out.push(b'\t');
+        fmt::int(out, filtered);
+        out.push(b'\t');
         fmt::int(out, miss);
         out.push(b'\t');
         fmt::g(out, miss as f64 / tot as f64);
@@ -49,6 +55,7 @@ pub fn site(ctx: &Ctx, text: &[u8], out: &mut Vec<u8>) {
 pub struct IndvCounts {
     pub tot: Vec<u32>,
     pub miss: Vec<u32>,
+    pub filtered: Vec<u32>,
 }
 
 impl IndvCounts {
@@ -57,11 +64,11 @@ impl IndvCounts {
             *self = other;
             return;
         }
-        for (a, b) in self.tot.iter_mut().zip(other.tot) {
-            *a += b;
-        }
-        for (a, b) in self.miss.iter_mut().zip(other.miss) {
-            *a += b;
+        let pairs = [(&mut self.tot, other.tot), (&mut self.miss, other.miss), (&mut self.filtered, other.filtered)];
+        for (acc, add) in pairs {
+            for (a, b) in acc.iter_mut().zip(add) {
+                *a += b;
+            }
         }
     }
 }
@@ -70,11 +77,16 @@ pub fn indv(ctx: &Ctx, text: &[u8], acc: &mut IndvCounts) {
     if acc.tot.is_empty() {
         acc.tot = vec![0; ctx.n_indv];
         acc.miss = vec![0; ctx.n_indv];
+        acc.filtered = vec![0; ctx.n_indv];
     }
     let mut s = Scratch::default();
     for_each_site(ctx, text, &mut s, |site, _, gts, _| {
         let gts = gts.get(site, ctx.n_indv);
         for (i, g) in gts.iter().enumerate() {
+            if g.excluded {
+                acc.filtered[i] += 1;
+                continue;
+            }
             if g.a == -1 {
                 acc.miss[i] += 1;
             }
@@ -84,15 +96,18 @@ pub fn indv(ctx: &Ctx, text: &[u8], acc: &mut IndvCounts) {
 }
 
 pub fn write_indv(ctx: &Ctx, acc: &IndvCounts, out: &mut Vec<u8>) {
+    let get = |v: &Vec<u32>, i: usize| v.get(i).copied().unwrap_or(0);
     for i in 0..ctx.n_indv {
         if !ctx.include[i] {
             continue;
         }
-        let (tot, miss) = (acc.tot.get(i).copied().unwrap_or(0), acc.miss.get(i).copied().unwrap_or(0));
+        let (tot, miss) = (get(&acc.tot, i), get(&acc.miss, i));
         out.extend_from_slice(ctx.names[i].as_bytes());
         out.push(b'\t');
         fmt::int(out, tot);
-        out.extend_from_slice(b"\t0\t");
+        out.push(b'\t');
+        fmt::int(out, get(&acc.filtered, i));
+        out.push(b'\t');
         fmt::int(out, miss);
         out.push(b'\t');
         fmt::g(out, miss as f64 / tot as f64);

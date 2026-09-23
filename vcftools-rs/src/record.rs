@@ -12,9 +12,17 @@ pub struct Gt {
     pub ploidy: u8,
     /// b'|' or b'/'; haploid calls count as phased.
     pub phase: u8,
+    /// Removed by a genotype filter (VCFtools' include_genotype == false).
+    pub excluded: bool,
 }
 
-const MISSING_DIPLOID: Gt = Gt { a: -1, b: -1, ploidy: 2, phase: b'/' };
+impl Gt {
+    const fn new(a: i32, b: i32, ploidy: u8, phase: u8) -> Self {
+        Gt { a, b, ploidy, phase, excluded: false }
+    }
+}
+
+const MISSING_DIPLOID: Gt = Gt::new(-1, -1, 2, b'/');
 
 /// REF followed by ALT alleles, upper-cased, "." ALTs dropped. Reused
 /// across lines to avoid per-line allocation.
@@ -47,8 +55,10 @@ pub struct Site<'a> {
     pub id: &'a [u8],
     pub qual: &'a [u8],
     pub filter: &'a [u8],
-    /// Index of GT within FORMAT, or -1.
+    /// Indices of GT, DP and GQ within FORMAT, or -1.
     pub gt_idx: i32,
+    pub dp_idx: i32,
+    pub gq_idx: i32,
     pub samples: &'a [u8],
 }
 
@@ -83,15 +93,30 @@ impl<'a> Site<'a> {
         }
 
         // FORMAT_to_idx is a map, so a repeated key keeps its last position.
-        let mut gt_idx = -1;
+        let (mut gt_idx, mut dp_idx, mut gq_idx) = (-1, -1, -1);
         if !format.is_empty() {
             for (i, key) in format.split(|&c| c == b':').enumerate() {
-                if key == b"GT" {
-                    gt_idx = i as i32;
+                match key {
+                    b"GT" => gt_idx = i as i32,
+                    b"DP" => dp_idx = i as i32,
+                    b"GQ" => gq_idx = i as i32,
+                    _ => {}
                 }
             }
         }
-        Site { chrom, pos, id, qual, filter, gt_idx, samples: rest }
+        Site { chrom, pos, id, qual, filter, gt_idx, dp_idx, gq_idx, samples: rest }
+    }
+
+    /// Calls `f(i, sub)` with the FORMAT sub-field `idx` of each of the
+    /// `n_indv` samples (None when absent), as parse_genotype_entry would
+    /// find it.
+    pub fn for_each_subfield(&self, n_indv: usize, idx: i32, mut f: impl FnMut(usize, Option<&[u8]>)) {
+        let mut rest = self.samples;
+        for i in 0..n_indv {
+            let end = memchr(b'\t', rest).unwrap_or(rest.len());
+            f(i, subfield(&rest[..end], idx));
+            rest = if end < rest.len() { &rest[end + 1..] } else { b"" };
+        }
     }
 
     /// Decodes all `n_indv` sample genotypes into `out`.
@@ -133,26 +158,27 @@ pub fn genotype(field: &[u8], gt_idx: i32) -> Gt {
     if gt_idx == 0 && field.len() == 3 && (field[1] == b'|' || field[1] == b'/') {
         return decode_gt(field);
     }
-    match gt_subfield(field, gt_idx) {
+    match subfield(field, gt_idx) {
         Some(s) => decode_gt(s),
         None => MISSING_DIPLOID,
     }
 }
 
+/// The `idx`-th ':'-separated sub-field of a sample column.
 #[inline]
-fn gt_subfield(field: &[u8], gt_idx: i32) -> Option<&[u8]> {
-    if gt_idx < 0 {
+fn subfield(field: &[u8], idx: i32) -> Option<&[u8]> {
+    if idx < 0 {
         return None;
     }
     let (mut i, mut start) = (0, 0);
     while let Some(off) = memchr(b':', &field[start..]) {
-        if i == gt_idx {
+        if i == idx {
             return Some(&field[start..start + off]);
         }
         i += 1;
         start += off + 1;
     }
-    (i == gt_idx).then(|| &field[start..])
+    (i == idx).then(|| &field[start..])
 }
 
 /// True if `s` (length 4n-1) is n columns of 3-byte diploid GTs separated
@@ -167,7 +193,7 @@ fn uniform_row(s: &[u8]) -> bool {
 #[inline(always)]
 fn decode3(a: u8, sep: u8, b: u8) -> Gt {
     let dec = |c: u8| if c == b'.' { -1 } else { c as i32 - b'0' as i32 };
-    Gt { a: dec(a), b: dec(b), ploidy: 2, phase: sep }
+    Gt::new(dec(a), dec(b), 2, sep)
 }
 
 #[inline]
@@ -175,7 +201,7 @@ fn decode_gt(s: &[u8]) -> Gt {
     if s.len() == 3 && (s[1] == b'/' || s[1] == b'|') {
         let a = if s[0] == b'.' { -1 } else { s[0] as i32 - b'0' as i32 };
         let b = if s[2] == b'.' { -1 } else { s[2] as i32 - b'0' as i32 };
-        return Gt { a, b, ploidy: 2, phase: s[1] };
+        return Gt::new(a, b, 2, s[1]);
     }
     let sep = |c: &u8| *c == b'/' || *c == b'|';
     match s.iter().position(sep) {
@@ -183,14 +209,14 @@ fn decode_gt(s: &[u8]) -> Gt {
             if s.iter().rposition(sep) != Some(p) {
                 crate::fatal("Polyploidy found, and not supported by vcftools");
             }
-            Gt { a: str2int(&s[..p]), b: str2int(&s[p + 1..]), ploidy: 2, phase: s[p] }
+            Gt::new(str2int(&s[..p]), str2int(&s[p + 1..]), 2, s[p])
         }
-        None => Gt { a: str2int(s), b: -1, ploidy: 1, phase: b'|' },
+        None => Gt::new(str2int(s), -1, 1, b'|'),
     }
 }
 
 /// header::str2int: "" or "." is missing (-1), otherwise C `atoi`.
-fn str2int(s: &[u8]) -> i32 {
+pub fn str2int(s: &[u8]) -> i32 {
     if s.is_empty() || s == b"." {
         -1
     } else {
@@ -239,12 +265,12 @@ mod tests {
 
     #[test]
     fn genotypes() {
-        assert_eq!(genotype(b"0|1", 0), Gt { a: 0, b: 1, ploidy: 2, phase: b'|' });
-        assert_eq!(genotype(b"./.", 0), Gt { a: -1, b: -1, ploidy: 2, phase: b'/' });
-        assert_eq!(genotype(b"1", 0), Gt { a: 1, b: -1, ploidy: 1, phase: b'|' });
-        assert_eq!(genotype(b".", 0), Gt { a: -1, b: -1, ploidy: 1, phase: b'|' });
-        assert_eq!(genotype(b"10/2:35", 0), Gt { a: 10, b: 2, ploidy: 2, phase: b'/' });
-        assert_eq!(genotype(b"35:0/1", 1), Gt { a: 0, b: 1, ploidy: 2, phase: b'/' });
+        assert_eq!(genotype(b"0|1", 0), Gt::new(0, 1, 2, b'|'));
+        assert_eq!(genotype(b"./.", 0), Gt::new(-1, -1, 2, b'/'));
+        assert_eq!(genotype(b"1", 0), Gt::new(1, -1, 1, b'|'));
+        assert_eq!(genotype(b".", 0), Gt::new(-1, -1, 1, b'|'));
+        assert_eq!(genotype(b"10/2:35", 0), Gt::new(10, 2, 2, b'/'));
+        assert_eq!(genotype(b"35:0/1", 1), Gt::new(0, 1, 2, b'/'));
         assert_eq!(genotype(b"35", 1), MISSING_DIPLOID);
         assert_eq!(genotype(b"0|1", -1), MISSING_DIPLOID);
     }
